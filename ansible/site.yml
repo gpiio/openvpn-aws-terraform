@@ -1,0 +1,7 @@
+---
+- name: Configure OpenVPN Infrastructure
+  hosts: vpn
+  become: yes
+  roles:
+    - openvpn
+

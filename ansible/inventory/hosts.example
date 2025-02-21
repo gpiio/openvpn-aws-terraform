@@ -1,0 +1,16 @@
+---
+all:
+  children:
+    vpn:
+      hosts:
+        vpn_server:
+          ansible_host: 34.205.73.194  # need to grab from terraform outputs 
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    private:
+      hosts:
+        private_instance:
+          ansible_host: 10.0.2.111  # need to grab from terraform outputs
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+

@@ -1,0 +1,133 @@
+---
+- name: Install required packages
+  apt:
+    name: "{{ system_packages }}"
+    state: present
+    update_cache: yes
+
+- name: Create OpenVPN directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  with_items:
+    - /etc/openvpn/easy-rsa
+    - /etc/openvpn/client-configs/files
+    - /var/log/openvpn
+
+- name: Copy easy-rsa files
+  shell: cp -r /usr/share/easy-rsa/* /etc/openvpn/easy-rsa/
+  args:
+    creates: /etc/openvpn/easy-rsa/easyrsa
+
+- name: Create vars file
+  template:
+    src: vars.j2
+    dest: /etc/openvpn/easy-rsa/vars
+    mode: '0644'
+
+- name: Initialize PKI
+  command: ./easyrsa init-pki
+  args:
+    chdir: /etc/openvpn/easy-rsa
+    creates: /etc/openvpn/easy-rsa/pki
+
+- name: Build CA
+  command: ./easyrsa --batch build-ca nopass
+  args:
+    chdir: /etc/openvpn/easy-rsa
+    creates: /etc/openvpn/easy-rsa/pki/ca.crt
+
+- name: Build server certificate
+  command: ./easyrsa --batch build-server-full server nopass
+  args:
+    chdir: /etc/openvpn/easy-rsa
+    creates: /etc/openvpn/easy-rsa/pki/issued/server.crt
+
+- name: Generate Diffie-Hellman parameters
+  command: ./easyrsa gen-dh
+  args:
+    chdir: /etc/openvpn/easy-rsa
+    creates: /etc/openvpn/easy-rsa/pki/dh.pem
+
+- name: Generate TLS key
+  command: openvpn --genkey --secret ta.key
+  args:
+    chdir: /etc/openvpn
+    creates: /etc/openvpn/ta.key
+
+- name: Copy required files to OpenVPN directory
+  copy:
+    src: "/etc/openvpn/easy-rsa/pki/{{ item.src }}"
+    dest: "/etc/openvpn/{{ item.dest }}"
+    remote_src: yes
+    mode: '0600'
+  with_items:
+    - { src: 'ca.crt', dest: 'ca.crt' }
+    - { src: 'issued/server.crt', dest: 'server.crt' }
+    - { src: 'private/server.key', dest: 'server.key' }
+    - { src: 'dh.pem', dest: 'dh.pem' }
+
+- name: Create server configuration
+  template:
+    src: server.conf.j2
+    dest: /etc/openvpn/server.conf
+    mode: '0644'
+
+- name: Enable IP forwarding
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    state: present
+    sysctl_set: yes
+    reload: yes
+
+- name: Set up NAT
+  iptables:
+    table: nat
+    chain: POSTROUTING
+    out_interface: eth0
+    source: "{{ vpn_network | regex_replace(' .*$') }}/24"
+    jump: MASQUERADE
+
+- name: Save iptables rules
+  command: netfilter-persistent save
+
+- name: Create client certificate
+  command: ./easyrsa --batch build-client-full {{ client_name }} nopass
+  args:
+    chdir: /etc/openvpn/easy-rsa
+    creates: /etc/openvpn/easy-rsa/pki/issued/{{ client_name }}.crt
+
+- name: Collect certificate and key contents
+  slurp:
+    src: "{{ item }}"
+  register: vpn_certs
+  with_items:
+    - /etc/openvpn/ca.crt
+    - "/etc/openvpn/easy-rsa/pki/issued/{{ client_name }}.crt"
+    - "/etc/openvpn/easy-rsa/pki/private/{{ client_name }}.key"
+    - /etc/openvpn/ta.key
+
+- name: Create client configuration
+  template:
+    src: client.conf.j2
+    dest: "/etc/openvpn/client-configs/files/{{ client_name }}.ovpn"
+    mode: '0600'
+  vars:
+    ca_cert: "{{ vpn_certs.results[0].content | b64decode }}"
+    client_cert: "{{ vpn_certs.results[1].content | b64decode | regex_replace('^.*(?=-----BEGIN CERTIFICATE-----)', '', multiline=True) }}"
+    client_key: "{{ vpn_certs.results[2].content | b64decode }}"
+    ta_key: "{{ vpn_certs.results[3].content | b64decode }}"
+
+- name: Start and enable OpenVPN service
+  systemd:
+    name: openvpn@server
+    state: started
+    enabled: yes
+
+- name: Fetch client configuration
+  fetch:
+    src: "/etc/openvpn/client-configs/files/{{ client_name }}.ovpn"
+    dest: "./client-configs/"
+    flat: yes

@@ -1,0 +1,26 @@
+---
+# OpenVPN Configuration
+openvpn_port: 1194
+openvpn_proto: udp
+vpn_network: "10.8.0.0 255.255.255.0"
+dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4
+
+# Organization Details for Certificates
+org_country: "US"
+org_province: "California"
+org_city: "San Francisco"
+org_name: "My Organization"
+org_email: "admin@example.com"
+org_unit: "IT"
+
+# Client Configuration
+client_name: "client1"
+
+# System Configuration
+system_packages:
+  - openvpn
+  - easy-rsa
+  - net-tools
+  - iptables-persistent

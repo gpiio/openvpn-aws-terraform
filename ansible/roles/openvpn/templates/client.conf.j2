@@ -1,0 +1,25 @@
+client
+dev tun
+proto {{ openvpn_proto }}
+remote {{ ansible_host }} {{ openvpn_port }}
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-CBC
+verb 3
+
+<ca>
+{{ ca_cert }}
+</ca>
+<cert>
+{{ client_cert }}
+</cert>
+<key>
+{{ client_key }}
+</key>
+<tls-auth>
+{{ ta_key }}
+</tls-auth>
+key-direction 1
