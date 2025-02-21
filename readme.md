@@ -1,1 +1,1 @@
-openvpn on aws acting as a bastion host
+working with openvpn on aws acting as a bastion host
